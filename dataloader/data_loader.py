@@ -58,7 +58,9 @@ class DataLoader(data.Dataset):
 
         structure = np.array(structure, dtype='float32')
         dose = np.array(dose).astype('float32')/70.0
-        ct = np.array(ct).astype('float32')/4000.0
+        ct = np.array(ct).astype('float32')
+        np.clip(ct, 0, 3000)
+        ct = ct/3000.0
         possible_mask = np.array(ct).astype('int')
 
         structure = np.transpose(structure, axes=[2, 0, 1, 3])

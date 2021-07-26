@@ -14,8 +14,10 @@ from dataloader.data_loader import DataLoader
 from torch.utils import data
 import torch
 from util import HN_structures
-from networks.loss import Loss_L1, Loss_L2
+from networks.loss import Loss_L1, Loss_MSE, Loss_DVH
 import torch.nn as nn
+from torch import optim
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--training_data_path', type=str,
@@ -26,11 +28,11 @@ parser.add_argument('--model_save_path', type=str,
                     default='./trained_models/', help='model save path')
 
 parser.add_argument('--criterion', type=nn.Module,
-                    default=Loss_L1(), help='model save path')
+                    default=Loss_DVH(), help='model save path')
 
 parser.add_argument('--epochs', type=int,
                     default=200, help='the epochs for traning')
-parser.add_argument('--lr_scheduler', type=int,
+parser.add_argument('--lr_scheduler', type=str,
                     default=None, help='learning rate schedular')
 parser.add_argument('--batch_size', type=int,
                     default=2, help='batch_size for training and validation')
@@ -64,6 +66,8 @@ if __name__ == "__main__":
     criterion = args.criterion
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
     print(args.model_save_path)
+    
+
     trainer = Trainer(model=model,
                   device=device,
                   criterion=criterion,
