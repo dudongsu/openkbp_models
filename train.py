@@ -13,7 +13,6 @@ from torchsummary import summary
 from dataloader.data_loader import DataLoader
 from torch.utils import data
 import torch
-from util import HN_structures
 from networks.loss import Loss_L1, Loss_MSE, Loss_DVH
 import torch.nn as nn
 from torch import optim

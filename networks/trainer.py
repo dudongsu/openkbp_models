@@ -2,6 +2,8 @@ import numpy as np
 import torch
 from pathlib import Path
 from torch import optim
+import pandas as pd
+from dataloader.general_functions import sparse_vector_function
 
 class TrainerLog:
     def __init__(self):
@@ -32,11 +34,13 @@ class Trainer:
     def __init__(self,
                  model: torch.nn.Module,
                  device: torch.device,
-                 criterion: torch.nn.Module,
-                 optimizer: torch.optim.Optimizer,
-                 training_DataLoader: torch.utils.data.Dataset,
+                 criterion: torch.nn.Module = None,
+                 optimizer: torch.optim.Optimizer = None,
+                 training_DataLoader: torch.utils.data.Dataset = None,
                  validation_DataLoader: torch.utils.data.Dataset = None,
+                 test_DataLoader: torch.utils.data.Dataset = None,
                  model_save_path: str=None,
+                 model_weight_path: str=None,
                  lr_scheduler: str=None,
                  epochs: int = 100,
                  epoch: int = 0,
@@ -51,11 +55,13 @@ class Trainer:
         self.set_lr_scheduler(lr_scheduler)
         self.training_DataLoader = training_DataLoader
         self.validation_DataLoader = validation_DataLoader
+        self.test_DataLoader = test_DataLoader
         self.device = device
         self.epochs = epochs
         self.epoch = epoch
         self.notebook = notebook
         self.model_save_path = model_save_path
+        self.model_weight_path = model_weight_path
 
         self.training_loss = []
         self.validation_loss = []
@@ -142,7 +148,7 @@ class Trainer:
                           leave=False)
 
         for i, (x, y, possible_mask) in batch_iter:
-            print('batch_iter ', i)
+            
             input, target, possible_mask = x.to(self.device), y.to(self.device), possible_mask.to(self.device)   # send to device (GPU or CPU)
             self.optimizer.zero_grad()  # zerograd the parameters
             out = self.model(input)  # one forward pass
@@ -193,3 +199,43 @@ class Trainer:
         self.validation_loss.append(np.mean(valid_losses))
 
         batch_iter.close()
+
+
+    def run_test(self):
+
+        if self.notebook:
+            from tqdm.notebook import tqdm, trange
+        else:
+            from tqdm import tqdm, trange
+
+        self.model.eval()  # evaluation mode
+        model_weights = torch.load(self.model_weight_path)
+        self.model.load_state_dict(model_weights)
+
+        self.list_dose_dif = []
+        self.list_DVH_dif = []
+        batch_iter = tqdm(enumerate(self.test_DataLoader), 'Test', total=len(self.test_DataLoader),leave=False)
+
+        for i  in tqdm(range(len(self.test_DataLoader))):
+            (x, y, possible_mask) =  self.test_DataLoader.__getitem__(i)
+            x = np.expand_dims(x, axis = 0)
+            x = torch.from_numpy(x).type(torch.float32)
+            input, target, possible_mask = x.to(self.device), y.to(self.device), possible_mask.to(self.device)   # send to device (GPU or CPU)
+            with torch.no_grad():
+                out = self.model(input)
+            out = out.cpu().numpy()
+            folder = self.test_DataLoader.file_paths_list[i]
+            print(folder)
+            dose_pred = out
+            dose_pred = np.squeeze(dose_pred)
+            possible_mask = np.squeeze(possible_mask.cpu().numpy())
+            print('possible mask dimention', possible_mask.shape)
+            dose_pred = np.multiply(dose_pred, possible_mask)
+            dose_pred = np.transpose(dose_pred, axes=[1, 2, 0])
+            dose_pred = np.squeeze(dose_pred)*70.0
+            dose_to_save = sparse_vector_function(dose_pred)
+            print(dose_to_save)
+            dose_df = pd.DataFrame(data=dose_to_save['data'].squeeze(), index=dose_to_save['indices'].squeeze(),
+                                   columns=['data'])
+            dose_df.to_csv('{}/{}.csv'.format(folder, 'dose_pred'))
+        

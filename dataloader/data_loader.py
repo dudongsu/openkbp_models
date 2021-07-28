@@ -7,7 +7,7 @@ import os
 
 class DataLoader(data.Dataset):
 
-    def __init__(self, data_folder, patient_shape=(128, 128, 128), transform = None):
+    def __init__(self, data_folder, patient_shape=(128, 128, 128), transform = None, mode_name='training_mode'):
         """Initialize the DataLoader class, which loads the data for OpenKBP
         :param file_paths_list: list of the directories or single files where data for each patient is stored
         :param batch_size: the number of data points to lead in a single batch
@@ -19,7 +19,7 @@ class DataLoader(data.Dataset):
                                'Esophagus', 'Larynx', 'Mandible'], targets=['PTV56', 'PTV63', 'PTV70'])
 
         self.patient_shape = patient_shape  # Shape of the patient
-        
+        self.mode_name = mode_name
         self.data_folder = data_folder
         self.file_paths_list = get_paths(self.data_folder, ext='')
 
@@ -27,7 +27,7 @@ class DataLoader(data.Dataset):
         self.full_roi_list = sum(map(list, self.rois.values()), [])  # make a list of all rois
         self.num_rois = len(self.full_roi_list)
         self.transform = transform
-        self.mode_name = 'training_mode'
+        self.mode_name = mode_name
         self.inputs_dtype = torch.float32
         self.targets_dtype = torch.float32
         self.batch_size = 1
@@ -42,6 +42,8 @@ class DataLoader(data.Dataset):
                                'voxel_dimensions': (3,)
                                # Physical dimensions (in mm) of voxels
                                }
+        if self.mode_name=='evaluate':
+            self.required_files['dose_pred'] = (self.patient_shape + (1,))
 
 
     
@@ -61,7 +63,7 @@ class DataLoader(data.Dataset):
         ct = np.array(ct).astype('float32')
         np.clip(ct, 0, 3000)
         ct = ct/3000.0
-        possible_mask = np.array(ct).astype('int')
+        possible_mask = np.array(possible_mask).astype('int')
 
         structure = np.transpose(structure, axes=[2, 0, 1, 3])
         dose = np.transpose(dose, axes=[2, 0, 1])
@@ -85,15 +87,28 @@ class DataLoader(data.Dataset):
         x = x.permute(3, 0, 1, 2)
         y = y.permute(3, 0, 1, 2)
         possible_mask = possible_mask.permute(3, 0, 1, 2)
+
+        if self.mode_name == 'evaluate':
+            predict_dose = dict_data['dose_pred'].squeeze()
+            predict_dose = np.array(predict_dose).astype('float32')
+            predict_dose = np.transpose(predict_dose, axes=[2, 0, 1])
+            predict_dose = np.array(np.expand_dims(predict_dose, axis = 3))
+            predict_dose = torch.from_numpy(predict_dose).type(torch.int32)
+            predict_dose = predict_dose.permute(3, 0, 1, 2)
+            return x, y, possible_mask, predict_dose
+
         return x, y, possible_mask
 
 
-    def get_batch(self, index: int):
+    def get_batch(self, index=None):
         """Loads one batch of data
         :param index: the index of the batch to be loaded
         :param patient_list: the list of patients for which to load data for
         :return: a dictionary with the loaded data
         """
+
+        # Make a list of files to be loaded
+       # file_paths_to_load = [self.file_paths_list[k] for k in indices]
         # Make a list of files to be loaded
         file_paths_to_load = [self.file_paths_list[index]]
         # Load the requested files as a tensors
@@ -172,6 +187,7 @@ class DataLoader(data.Dataset):
                 shaped_data[key] = loaded_file[key]
             else:  # Files with shape
                 np.put(shaped_data[key], loaded_file[key]['indices'], loaded_file[key]['data'])
+            
 
         return shaped_data
 
