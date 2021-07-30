@@ -6,6 +6,7 @@ import tqdm
 from collections import defaultdict
 import matplotlib.pyplot as plt
 import random
+from util import IndexTracker
 
 
 class EvaluateDose:
@@ -208,7 +209,47 @@ class EvaluateDose:
         plt.ylabel('volume %')
         plt.legend(handles=roi_legend,bbox_to_anchor=(1.1, 1.05),prop={'size': 6}) 
         plt.show()
-        print('dose shape', reference_dose.shape)    
+        print('dose shape', reference_dose.shape)
+
+
+
+    def plot_dose(self, idx):
+        """
+        plot dose and dose different
+        """
+        # Prepare to iterate through all rois
+
+        self.get_constant_patient_features(idx)
+
+        dose_batch = self.data_loader.get_batch(idx)
+        ct = dose_batch['ct'].squeeze()
+        dose_key = [key for key in dose_batch.keys() if 'dose' in key.lower()][0]  # The name of the dose
+        reference_dose = dose_batch[dose_key][0].squeeze()  # Dose tensor
+        if self.dose_loader is not None:
+            dose_batch = self.dose_loader.get_batch(idx)
+            dose_key = [key for key in dose_batch.keys() if 'dose_pred' in key.lower()][0]  # The name of the dose
+            new_dose = dose_batch[dose_key][0].squeeze()  # Dose tensor
+        print('dose shape is ', reference_dose.shape)
+        # create DVH curve for reference dose
+        reference_dose = np.transpose(reference_dose, axes=[2, 0, 1])
+        new_dose = np.transpose(new_dose, axes=[2, 0, 1])
+        ct = np.transpose(ct, axes=[2, 0, 1])
+    
+        
+        max_img = np.max(ct.flatten())
+        max_dose = np.max(reference_dose.flatten())
+        
+        fig, (ax1, ax2, ax3)= plt.subplots(3, 1)
+        tracker1 = IndexTracker(ax1, reference_dose, fig,0,max_dose)
+        fig.canvas.mpl_connect('scroll_event', tracker1.onscroll)
+        tracker2 = IndexTracker(ax2, new_dose, fig,0,max_dose)
+        fig.canvas.mpl_connect('scroll_event', tracker2.onscroll)
+        tracker3 = IndexTracker(ax3, ct, fig,0,max_img)
+        fig.canvas.mpl_connect('scroll_event', tracker3.onscroll)
+       # tracker4 = IndexTracker(ax4, self.structures[organ]['contour'], fig,0,1)
+       # fig.canvas.mpl_connect('scroll_event', tracker4.onscroll)
+        plt.show()
+    
         
 
 
