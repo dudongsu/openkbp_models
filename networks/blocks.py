@@ -15,8 +15,11 @@ class DoubleConv(nn.Module):
             mid_channels = out_channels
         self.conv1 = nn.Conv3d(in_channels, mid_channels, kernel_size=3, padding=1)
         self.conv2 = nn.Conv3d(in_channels+mid_channels, out_channels, kernel_size=3, padding=1)
-        self.BatchNorm3d_1 = nn.BatchNorm3d(mid_channels)
-        self.BatchNorm3d_2 = nn.BatchNorm3d(out_channels)
+    #    self.BatchNorm3d_1 = nn.BatchNorm3d(mid_channels)
+    #    self.BatchNorm3d_2 = nn.BatchNorm3d(out_channels)
+        self.BatchNorm3d_1 = nn.InstanceNorm3d(mid_channels, affine=True)
+        self.BatchNorm3d_2 = nn.InstanceNorm3d(out_channels, affine=True)
+        self.dropout = nn.Dropout(0.5)
         self.act1 = nn.ReLU(inplace=True)
 
         # initial the weight
@@ -25,10 +28,14 @@ class DoubleConv(nn.Module):
 
     def forward(self, x):
         y = self.conv1(x)
+    #    y = self.BatchNorm3d_1(y)
         y = self.act1(y)
+    #    m = nn.LayerNorm(y.size()[1:])
         y = torch.cat([x, y], dim=1)
         z = self.conv2(y)
+    #    z = self.BatchNorm3d_2(z)
         z = self.act1(z)
+     #   z = nn.LayerNorm(z.size()[2:])(z)
         z = torch.cat([y, z], dim=1)
         return z
 
@@ -76,6 +83,7 @@ class OutConv(nn.Module):
         self.conv1 = nn.Conv3d(in_channels, 2, kernel_size=3, padding=1)
         self.conv2 = nn.Conv3d(2, out_channels, kernel_size=1)
         self.act1 = nn.ReLU(inplace=True)
+        self.dropout = nn.Dropout(0.5)
 
     def forward(self, x):
         x = self.conv1(x)

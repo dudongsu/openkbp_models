@@ -4,10 +4,11 @@ from .general_functions import get_paths, load_file
 import torch.utils.data as data
 import torch
 import os
+from augmentation.augmentation import *
 
 class DataLoader(data.Dataset):
 
-    def __init__(self, data_folder, patient_shape=(128, 128, 128), transform = None, mode_name='training_mode'):
+    def __init__(self, data_folder, patient_shape=(128, 128, 128), transform = None, mode_name='training_mode',picked = None):
         """Initialize the DataLoader class, which loads the data for OpenKBP
         :param file_paths_list: list of the directories or single files where data for each patient is stored
         :param batch_size: the number of data points to lead in a single batch
@@ -21,8 +22,10 @@ class DataLoader(data.Dataset):
         self.patient_shape = patient_shape  # Shape of the patient
         self.mode_name = mode_name
         self.data_folder = data_folder
+        print(self.data_folder)
         self.file_paths_list = get_paths(self.data_folder, ext='')
-
+        if picked!=None:
+            self.file_paths_list = np.array(self.file_paths_list)[picked]
         self.indices = np.arange(len(self.file_paths_list))  # Indices of file paths
         self.full_roi_list = sum(map(list, self.rois.values()), [])  # make a list of all rois
         self.num_rois = len(self.full_roi_list)
@@ -77,11 +80,9 @@ class DataLoader(data.Dataset):
         
         batch_X = np.array(np.concatenate((ct, structure_masks),axis=3))
         batch_Y = np.array(dose)
-     #   batch_XY = np.expand_dims(batch_XY, axis = 0)
-     #   batch_XY = np.array(batch_XY)
 
-        x = batch_X #np.squeeze(batch_XY[:,:,:,:,0:self.dimention], axis=0)
-        y = batch_Y #np.squeeze(batch_XY[:,:,:,:,self.dimention:self.dimention+1], axis=0)
+        x = batch_X 
+        y = batch_Y 
         x, y = torch.from_numpy(x).type(self.inputs_dtype), torch.from_numpy(y).type(self.targets_dtype)
         possible_mask = torch.from_numpy(possible_mask).type(torch.int32)
         x = x.permute(3, 0, 1, 2)

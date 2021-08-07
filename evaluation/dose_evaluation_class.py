@@ -198,7 +198,7 @@ class EvaluateDose:
                 
 
      #   self.calculate_metrics(self.new_dose_metric_df, new_dose)
-        fig = plt.figure()
+        fig = plt.figure(dpi=1200)
         roi_legend = []
         for roi in DVH_all_ref.keys():
             r = random.uniform(0, 1); g = random.uniform(0, 1); b = random.uniform(0, 1)
@@ -209,11 +209,12 @@ class EvaluateDose:
         plt.ylabel('volume %')
         plt.legend(handles=roi_legend,bbox_to_anchor=(1.1, 1.05),prop={'size': 6}) 
         plt.show()
+        plt.savefig('DVH.png', dpi=300)
         print('dose shape', reference_dose.shape)
 
 
 
-    def plot_dose(self, idx):
+    def plot_dose(self, idx, slice):
         """
         plot dose and dose different
         """
@@ -234,18 +235,31 @@ class EvaluateDose:
         reference_dose = np.transpose(reference_dose, axes=[2, 0, 1])
         new_dose = np.transpose(new_dose, axes=[2, 0, 1])
         ct = np.transpose(ct, axes=[2, 0, 1])
+        dose_diff = new_dose - reference_dose
     
         
         max_img = np.max(ct.flatten())
         max_dose = np.max(reference_dose.flatten())
+        max_dose_diff = np.max(abs(dose_diff.flatten()))
         
-        fig, (ax1, ax2, ax3)= plt.subplots(3, 1)
-        tracker1 = IndexTracker(ax1, reference_dose, fig,0,max_dose)
-        fig.canvas.mpl_connect('scroll_event', tracker1.onscroll)
-        tracker2 = IndexTracker(ax2, new_dose, fig,0,max_dose)
-        fig.canvas.mpl_connect('scroll_event', tracker2.onscroll)
-        tracker3 = IndexTracker(ax3, ct, fig,0,max_img)
-        fig.canvas.mpl_connect('scroll_event', tracker3.onscroll)
+        fig = plt.figure(figsize=(10, 12), dpi=300)
+        ax1 = fig.add_subplot(311)
+        im1 = ax1.imshow(reference_dose[slice,:,:].squeeze(), interpolation='None')
+        fig.colorbar(im1, orientation='vertical')
+        ax2 = fig.add_subplot(312)
+        im2 = ax2.imshow(new_dose[slice,:,:].squeeze(), vmin=0, vmax=max_dose)
+        fig.colorbar(im2, orientation='vertical')
+        ax3 = fig.add_subplot(313)
+        im3 = ax3.imshow(dose_diff[slice,:,:].squeeze(), vmin=-max_dose_diff, vmax=max_dose_diff)
+        fig.colorbar(im3, orientation='vertical')
+
+
+     #   tracker1 = IndexTracker(ax1, reference_dose, fig,0,max_dose)
+     #   fig.canvas.mpl_connect('scroll_event', tracker1.onscroll)
+     #   tracker2 = IndexTracker(ax2, new_dose, fig,0,max_dose)
+     #   fig.canvas.mpl_connect('scroll_event', tracker2.onscroll)
+     #   tracker3 = IndexTracker(ax3, dose_diff, fig,0,5)
+     #   fig.canvas.mpl_connect('scroll_event', tracker3.onscroll)
        # tracker4 = IndexTracker(ax4, self.structures[organ]['contour'], fig,0,1)
        # fig.canvas.mpl_connect('scroll_event', tracker4.onscroll)
         plt.show()

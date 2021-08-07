@@ -4,6 +4,8 @@ from pathlib import Path
 from torch import optim
 import pandas as pd
 from dataloader.general_functions import sparse_vector_function
+from .loss import dose_score, Loss_dosescore
+import os
 
 class TrainerLog:
     def __init__(self):
@@ -52,20 +54,22 @@ class Trainer:
         self.criterion = criterion
         self.optimizer = optimizer
         self.lr_scheduler = None
-        self.set_lr_scheduler(lr_scheduler)
+        self.epochs = epochs
         self.training_DataLoader = training_DataLoader
         self.validation_DataLoader = validation_DataLoader
         self.test_DataLoader = test_DataLoader
-        self.device = device
-        self.epochs = epochs
+        self.set_lr_scheduler(lr_scheduler)
+        self.device = device 
         self.epoch = epoch
         self.notebook = notebook
         self.model_save_path = model_save_path
         self.model_weight_path = model_weight_path
-
+        self.dosesore = Loss_dosescore()
         self.training_loss = []
         self.validation_loss = []
         self.learning_rate = []
+        self.dose_score_train = []
+        self.dose_score_validation = []
         self.min_valid_loss = float('inf')
 
     def set_lr_scheduler(self, lr_scheduler_type):
@@ -76,15 +80,15 @@ class Trainer:
         elif lr_scheduler_type == 'MultiStepLR':
             self.lr_scheduler_type = 'MultiStepLR'
             self.lr_scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer,
-                                                               milestones=[30,80], 
+                                                               milestones=[80,170], 
                                                                gamma=0.1,
                                                                last_epoch=-1
                                                                )
         elif lr_scheduler_type == 'cosine':
             self.lr_scheduler_type = 'cosine'
-            self.lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(self.setting.optimizer,
-                                                                     T_max=200,
-                                                                     eta_min=0,
+            self.lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer,
+                                                                     T_max=10000,
+                                                                     eta_min=1e-7,
                                                                      last_epoch=-1
                                                                      )
         elif lr_scheduler_type == 'ReduceLROnPlateau':
@@ -103,13 +107,14 @@ class Trainer:
             self.lr_scheduler_type = 'OneCycleLR'
             self.lr_scheduler = optim.lr_scheduler.OneCycleLR(self.optimizer,
                                                               max_lr=0.001,
-                                                              factor=0.1,
                                                               epochs=self.epochs,
                                                               steps_per_epoch=len(self.training_DataLoader)
                                                               )
     
     def run_trainer(self):
 
+        if not self.model_save_path:
+            os.makedirs(self.model_save_path)
         if self.notebook:
             from tqdm.notebook import tqdm, trange
         else:
@@ -130,8 +135,9 @@ class Trainer:
             """Learning rate scheduler block"""
             if self.lr_scheduler is not None and self.lr_scheduler != 'OneCycleLR':
                 if self.validation_DataLoader is not None and self.lr_scheduler == 'ReduceLROnPlateau':
-                    self.lr_scheduler.step(self.validation_loss[-1])  # learning rate scheduler step with validation loss
+                    self.lr_scheduler.step()  # learning rate scheduler step with validation loss
                 else:
+                    print('learning rate step')
                     self.lr_scheduler.step()  # learning rate scheduler step
         return self.training_loss, self.validation_loss, self.learning_rate
 
@@ -146,15 +152,16 @@ class Trainer:
         train_losses = []  # accumulate the losses here
         batch_iter = tqdm(enumerate(self.training_DataLoader), 'Training', total=len(self.training_DataLoader),
                           leave=False)
-
-        for i, (x, y, possible_mask) in batch_iter:
+        dose_scores = np.zeros(len(batch_iter))
+        for i, (x, y, possible_dose_mask) in batch_iter:
             
-            input, target, possible_mask = x.to(self.device), y.to(self.device), possible_mask.to(self.device)   # send to device (GPU or CPU)
+            input, target, possible_mask = x.to(self.device), y.to(self.device), possible_dose_mask.to(self.device)   # send to device (GPU or CPU)
             self.optimizer.zero_grad()  # zerograd the parameters
             out = self.model(input)  # one forward pass
             loss = self.criterion(out, target, possible_mask, input)  # calculate loss
             loss_value = loss.item()
             train_losses.append(loss_value)
+            dose_scores[i] = self.dosesore(out, target, possible_mask).item()
             loss.backward()  # one backward pass
             self.optimizer.step()  # update the parameters
             if self.lr_scheduler is not None and self.lr_scheduler == 'OneCycleLR':
@@ -163,6 +170,9 @@ class Trainer:
 
         
         self.training_loss.append(np.mean(train_losses))
+        print(f'train Loss: {np.mean(train_losses)}')
+        self.dose_score_train.append(dose_scores.mean())
+        print(f'train dose score: {dose_scores.mean()}')
         self.learning_rate.append(self.optimizer.param_groups[0]['lr'])
 
         batch_iter.close()
@@ -178,9 +188,10 @@ class Trainer:
         valid_losses = []  # accumulate the losses here
         batch_iter = tqdm(enumerate(self.validation_DataLoader), 'Validation', total=len(self.validation_DataLoader),
                           leave=False)
+        dose_scores = np.zeros(len(batch_iter))
 
-        for i, (x, y, possible_mask) in batch_iter:
-            input, target, possible_mask = x.to(self.device), y.to(self.device), possible_mask.to(self.device)  # send to device (GPU or CPU)
+        for i, (x, y, possible_dose_mask) in batch_iter:
+            input, target, possible_mask = x.to(self.device), y.to(self.device), possible_dose_mask.to(self.device)  # send to device (GPU or CPU)
 
             with torch.no_grad():
                 out = self.model(input)
@@ -188,13 +199,18 @@ class Trainer:
                 loss_value = loss.item()
                 valid_losses.append(loss_value)
                 batch_iter.set_description(f'Validation: (loss {loss_value:.4f})')
+            dose_scores[i]=self.dosesore(out, target, possible_mask)
+
         print(f'Validation Loss: {np.mean(valid_losses)}')
+        self.dose_score_validation.append(dose_scores.mean())
+        print(f'validation dose score: {dose_scores.mean()}')
+
         self.log.list_average_val_index_associate_iter.append(np.mean(valid_losses))
         if self.min_valid_loss > np.mean(valid_losses):
             print(f'Validation Loss Decreased({self.min_valid_loss:.6f}--->{np.mean(valid_losses):.6f}) \t Saving The Model')
             self.min_valid_loss = np.mean(valid_losses)
             # Saving State Dict
-            model_name =  'best_Unet_model.pt'
+            model_name =  'best_val_model.pt'
             torch.save(self.model.state_dict(), self.model_save_path+model_name)
         self.validation_loss.append(np.mean(valid_losses))
 
@@ -224,6 +240,7 @@ class Trainer:
             with torch.no_grad():
                 out = self.model(input)
             out = out.cpu().numpy()
+            out[out<0] = 0
             folder = self.test_DataLoader.file_paths_list[i]
             print(folder)
             dose_pred = out
