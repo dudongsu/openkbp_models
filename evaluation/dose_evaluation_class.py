@@ -51,7 +51,6 @@ class EvaluateDose:
       #  num_batches = self.data_loader.number_of_batches()
         num_batches = len(self.data_loader)
         dose_score_vec = np.zeros(num_batches)
-
         # Only make calculations if data_loader is not empty
         if not self.data_loader.file_paths_list:
             print('No patient information was given to calculate metrics')
@@ -81,10 +80,13 @@ class EvaluateDose:
 
             if self.dose_loader is not None:
                 dvh_score = np.nanmean(np.abs(self.reference_dose_metric_df - self.new_dose_metric_df).values)
+                dvh_score_std = np.nanstd(np.abs(self.reference_dose_metric_df - self.new_dose_metric_df).values)
                 dose_score = dose_score_vec.mean()
-                return dvh_score, dose_score
+                dose_score_std = dose_score_vec.std()
+                return dvh_score, dose_score, dvh_score_std, dose_score_std
             else:
                 print('No new dose provided. Metrics were only calculated for the provided dose.')
+
 
     def get_patient_dose_tensor(self, data_loader, idx= None, dose = 'dose'):
         """Retrieves a flattened dose tensor from the input data_loader.
@@ -149,7 +151,51 @@ class EvaluateDose:
 
         return metric_df
 
-    
+    def make_metrics_ROI(self):
+        num_batches = len(self.data_loader)
+        dose_score_vec = {}
+        dose_score_vec['PTV70'] =[]
+        dose_score_vec['PTV63'] =[]
+        dose_score_vec['PTV56'] =[]
+        dose_score_vec['Brainstem'] = []
+        dose_score_vec['SpinalCord'] = []
+        dose_score_vec['RightParotid'] = []
+        dose_score_vec['LeftParotid'] = []
+        dose_score_vec['Mandible'] = []
+        dose_score_vec['Larynx'] = []
+
+
+        if not self.data_loader.file_paths_list:
+            print('No patient information was given to calculate metrics')
+        else:
+            # Change batch size to 1
+            self.data_loader.batch_size = 1  # Loads data related to ground truth patient information
+            if self.dose_loader is not None:
+                self.dose_loader.batch_size = 1  # Loads data related to ground truth patient information
+
+            for idx in tqdm.tqdm(range(num_batches)):
+                 # Get roi masks for patient
+                self.get_constant_patient_features(idx)
+                # Get dose tensors for reference dose and evaluate criteria
+                reference_dose = self.get_patient_dose_tensor(self.data_loader, idx)
+                if reference_dose is not None:
+                    self.reference_dose_metric_df = self.calculate_metrics(self.reference_dose_metric_df, reference_dose)
+                # If a dose loader was provided, calculate the score
+                if self.dose_loader is not None:
+                    new_dose = self.get_patient_dose_tensor(self.dose_loader, idx, dose = 'dose_pred')
+                    # Make metric data frames
+                    for roi_idx, roi_ in enumerate(self.data_loader.full_roi_list):
+                        for organ in dose_score_vec.keys():
+                            if roi_ == organ:
+                                roi_mask = self.roi_mask[:, :, :, roi_idx].flatten()
+                                roi_dose_reference = reference_dose[roi_mask]
+                                roi_dose_new = new_dose[roi_mask]
+                                if np.sum(roi_mask)>0:
+                                    dose_score_vec[organ].append(np.sum(np.abs(roi_dose_reference - roi_dose_new)) / np.sum(roi_mask))
+            return dose_score_vec
+        
+        
+
     def plot_DVH(self, idx):
         """
         plot DVH
@@ -253,20 +299,46 @@ class EvaluateDose:
         im3 = ax3.imshow(dose_diff[slice,:,:].squeeze(), vmin=-max_dose_diff, vmax=max_dose_diff)
         fig.colorbar(im3, orientation='vertical')
 
-
-     #   tracker1 = IndexTracker(ax1, reference_dose, fig,0,max_dose)
-     #   fig.canvas.mpl_connect('scroll_event', tracker1.onscroll)
-     #   tracker2 = IndexTracker(ax2, new_dose, fig,0,max_dose)
-     #   fig.canvas.mpl_connect('scroll_event', tracker2.onscroll)
-     #   tracker3 = IndexTracker(ax3, dose_diff, fig,0,5)
-     #   fig.canvas.mpl_connect('scroll_event', tracker3.onscroll)
-       # tracker4 = IndexTracker(ax4, self.structures[organ]['contour'], fig,0,1)
-       # fig.canvas.mpl_connect('scroll_event', tracker4.onscroll)
         plt.show()
+    
+   
+
+##### end of Evaluation class
+
+
+
+def plot_loss(train_loss_file='./trained_models/train_losses.csv', 
+              validation_loss_file = './trained_models/validation_losses.csv'):
+    train_losses = np.genfromtxt(train_loss_file,delimiter=',')
+    validation_losses = np.genfromtxt(validation_loss_file,delimiter=',')
+    fig = plt.figure(figsize=(10, 12), dpi=100)
+    plt.plot(range(len(train_losses)),train_losses, 'r', linewidth=2, label='train')
+    plt.plot(range(len(validation_losses)),validation_losses, 'r', linewidth=2, linestyle='dashed', label='val')
+    plt.ylabel('l1 loss')
+  #  plt.legend(handles=roi_legend,bbox_to_anchor=(1.1, 1.05),prop={'size': 6}) 
+    plt.show
     
         
 
-
+def plot_loss_compare(train_loss_1='./trained_models/train_losses.csv', 
+              validation_loss_1 = './trained_models/validation_losses.csv', 
+              train_loss_2 = './trained_models/train_losses_AttUnet.csv',
+              validation_loss_2 = './trained_models/validation_losses_AttUnet.csv'):
+    train_losses_1 = np.genfromtxt(train_loss_1,delimiter=',')
+    validation_losses_1 = np.genfromtxt(validation_loss_1,delimiter=',')
+    train_losses_2 = np.genfromtxt(train_loss_2,delimiter=',')
+    validation_losses_2 = np.genfromtxt(validation_loss_2,delimiter=',')
+    epochs = 21
+    fig = plt.figure(figsize=(10, 12), dpi=100)
+    x = range(0, epochs)
+    plt.plot(x,train_losses_1[0:epochs], 'r', linewidth=2, label='train_Unet')
+    plt.plot(x,validation_losses_1[0:epochs], 'r', linewidth=2, linestyle='dashed', label='val Unet')
+    plt.plot(x,train_losses_2[0:epochs], 'b', linewidth=2, label='train AttUnet')
+    plt.plot(x,validation_losses_2[0:epochs], 'b', linewidth=2, linestyle='dashed', label='val AttUnet')
+    plt.ylabel('loss')
+    plt.legend()
+  #  plt.legend(handles=roi_legend,bbox_to_anchor=(1.1, 1.05),prop={'size': 6}) 
+    plt.show()
 
 
     

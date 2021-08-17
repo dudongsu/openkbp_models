@@ -15,11 +15,9 @@ class DoubleConv(nn.Module):
             mid_channels = out_channels
         self.conv1 = nn.Conv3d(in_channels, mid_channels, kernel_size=3, padding=1)
         self.conv2 = nn.Conv3d(in_channels+mid_channels, out_channels, kernel_size=3, padding=1)
-    #    self.BatchNorm3d_1 = nn.BatchNorm3d(mid_channels)
-    #    self.BatchNorm3d_2 = nn.BatchNorm3d(out_channels)
         self.BatchNorm3d_1 = nn.InstanceNorm3d(mid_channels, affine=True)
         self.BatchNorm3d_2 = nn.InstanceNorm3d(out_channels, affine=True)
-        self.dropout = nn.Dropout(0.5)
+        
         self.act1 = nn.ReLU(inplace=True)
 
         # initial the weight

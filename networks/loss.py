@@ -10,8 +10,8 @@ class Loss_L1(nn.Module):
 
     def forward(self, out, target, possible_mask, CT_structure_mask):
 
-        out = out #[possible_mask > 0]
-        gt_dose = target #[possible_mask > 0]
+        out = out[possible_mask > 0]
+        gt_dose = target[possible_mask > 0]
 
         L1_loss = self.L1_loss_func(out, gt_dose)
         return L1_loss
@@ -39,8 +39,8 @@ class Loss_weightedMSE(nn.Module):
         # structure mask
         #'Brainstem', 'SpinalCord', 'RightParotid', 'LeftParotid', 'Esophagus', 'Larynx', 'Mandible', 'PTV56', 'PTV63','PTV70'
         structure_mask = CT_structure_mask[:, 1:CT_structure_mask.shape[1],:,:,:]
-        out_total = out #[possible_mask > 0]
-        gt_dose_total = target #[possible_mask > 0]
+        out_total = out[possible_mask > 0]
+        gt_dose_total = target[possible_mask > 0]
         MSE_loss = self.MSELoss_fun(out_total, gt_dose_total)
         weight = [0.2, 0.2, 0.1, 0.1, 0.1, 0.1, 0.1, 1, 1, 1]
         for i in range(structure_mask.shape[0]):

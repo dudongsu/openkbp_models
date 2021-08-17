@@ -6,6 +6,8 @@ import pandas as pd
 from dataloader.general_functions import sparse_vector_function
 from .loss import dose_score, Loss_dosescore
 import os
+from numpy import savetxt
+import time
 
 class TrainerLog:
     def __init__(self):
@@ -87,7 +89,7 @@ class Trainer:
         elif lr_scheduler_type == 'cosine':
             self.lr_scheduler_type = 'cosine'
             self.lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer,
-                                                                     T_max=10000,
+                                                                     T_max=100,
                                                                      eta_min=1e-7,
                                                                      last_epoch=-1
                                                                      )
@@ -121,6 +123,8 @@ class Trainer:
             from tqdm import tqdm, trange
 
         progressbar = trange(self.epochs, desc='Progress')
+        t0 = time.time()
+        
         for i in progressbar:
             """Epoch counter"""
             self.epoch += 1  # epoch counter
@@ -139,6 +143,9 @@ class Trainer:
                 else:
                     print('learning rate step')
                     self.lr_scheduler.step()  # learning rate scheduler step
+            print('{} seconds'.format(time.time() - t0))
+            savetxt(self.model_save_path+'train_losses.csv', self.training_loss, delimiter=',')
+            savetxt(self.model_save_path+'validation_losses.csv', self.validation_loss, delimiter=',')
         return self.training_loss, self.validation_loss, self.learning_rate
 
     def _train(self):
@@ -168,9 +175,9 @@ class Trainer:
                 self.lr_scheduler.step()
             batch_iter.set_description(f'Training: (loss {loss_value:.4f})')  # update progressbar
 
-        
-        self.training_loss.append(np.mean(train_losses))
-        print(f'train Loss: {np.mean(train_losses)}')
+        train_losses_clean = [x for x in train_losses if x != 'nan']
+        self.training_loss.append(np.mean(train_losses_clean))
+        print(f'train Loss: {np.mean(train_losses_clean)}')
         self.dose_score_train.append(dose_scores.mean())
         print(f'train dose score: {dose_scores.mean()}')
         self.learning_rate.append(self.optimizer.param_groups[0]['lr'])
@@ -200,8 +207,8 @@ class Trainer:
                 valid_losses.append(loss_value)
                 batch_iter.set_description(f'Validation: (loss {loss_value:.4f})')
             dose_scores[i]=self.dosesore(out, target, possible_mask)
-
-        print(f'Validation Loss: {np.mean(valid_losses)}')
+        valid_losses_clean = [x for x in valid_losses if x != 'nan']
+        print(f'Validation Loss: {np.mean(valid_losses_clean)}')
         self.dose_score_validation.append(dose_scores.mean())
         print(f'validation dose score: {dose_scores.mean()}')
 
@@ -212,7 +219,7 @@ class Trainer:
             # Saving State Dict
             model_name =  'best_val_model.pt'
             torch.save(self.model.state_dict(), self.model_save_path+model_name)
-        self.validation_loss.append(np.mean(valid_losses))
+        self.validation_loss.append(np.mean(valid_losses_clean))
 
         batch_iter.close()
 
@@ -255,4 +262,5 @@ class Trainer:
             dose_df = pd.DataFrame(data=dose_to_save['data'].squeeze(), index=dose_to_save['indices'].squeeze(),
                                    columns=['data'])
             dose_df.to_csv('{}/{}.csv'.format(folder, 'dose_pred'))
+            
         

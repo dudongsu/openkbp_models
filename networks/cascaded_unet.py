@@ -161,4 +161,5 @@ class Cascade_Unet(nn.Module):
 
         output_A = self.conv_out_A(out_net_A)
         output_B = self.conv_out_B(out_net_B)
-        return [output_A, output_B]
+        #return [output_A, output_B]
+        return output_B

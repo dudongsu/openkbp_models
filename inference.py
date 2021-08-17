@@ -2,8 +2,12 @@ import os
 import sys
 import argparse
 from tqdm import tqdm
-
+from networks.cascaded_unet import Cascade_Unet
+from networks.unet_dcnn import UNet_dcnn
 from networks.AttUnet_model import Att_UNet
+from networks.AttUnet_dropout import AttUnet_dropout
+from networks.DenseUnet import DenseUnet
+from networks.unet import Unet
 from networks.trainer import *
 from dataloader.data_loader import DataLoader
 from torch.utils import data
@@ -32,13 +36,24 @@ if __name__ == "__main__":
         raise SystemExit('test folder not exist')
     
 
-    test_dataset = DataLoader(data_folder = args.test_data_path)
+    test_dataset = DataLoader(data_folder = args.test_data_path, mode_name ='val')
 
-    model = Att_UNet(n_channels=11, n_classes=1).to(device)
+    # Unet
+  #  model = Unet(n_channels=11, n_classes=1).to(device)
+    # Dense Unet
+ #   model = DenseUnet(n_channels=11, n_classes=1).to(device)
+    # DenseUNet
+  #  model = Att_UNet(n_channels=11, n_classes=1).to(device)
+    # Attention UNet
+ #   model = Att_UNet(n_channels=11, n_classes=1).to(device)
+    # Attention Unet with dropout
+ #   model = AttUnet_dropout(n_channels=11, n_classes=1).to(device)
+    # dcnn
+ #   model = UNet_dcnn().to(device)
 
-#    model = Cascade_Unet(in_ch=11, out_ch=1,
-#                         list_ch_A=[-1, 16, 32, 64, 128, 256],
-#                         list_ch_B=[-1, 32, 64, 128, 256, 512]).to(device)
+    model = Cascade_Unet(in_ch=11, out_ch=1,
+                         list_ch_A=[-1, 16, 32, 64, 128, 256],
+                         list_ch_B=[-1, 32, 64, 128, 256, 512]).to(device)
     tester = Trainer(model=model,
                   device=device,
                   test_DataLoader=test_dataset,
